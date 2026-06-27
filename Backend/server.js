@@ -19,13 +19,20 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 const app = express();
 const PORT = process.env.PORT || 5000;
 const configuredClientUrl = process.env.CLIENT_URL?.trim();
+const allowedOrigins = [
+  configuredClientUrl,
+  ...(process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean),
+];
 
 const isAllowedOrigin = (origin) => {
   if (!origin) {
     return true;
   }
 
-  if (configuredClientUrl && origin === configuredClientUrl) {
+  if (allowedOrigins.includes(origin)) {
     return true;
   }
 
