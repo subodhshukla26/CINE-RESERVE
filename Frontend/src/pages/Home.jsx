@@ -6,20 +6,19 @@ import BottomNav from '../components/common/BottomNav';
 import { MOVIES } from '../utils/constants';
 
 const Home = () => {
-  const [selectedMovie, setSelectedMovie] = useState(MOVIES[0]);
+  const [movies] = useState(MOVIES);
+  const [selectedMovie, setSelectedMovie] = useState(MOVIES[0] || null);
 
   return (
     <div className="min-h-screen bg-[#F7F8FD] w-full max-w-[390px] mx-auto relative shadow-2xl overflow-x-hidden flex flex-col">
-      {/* Container for scrollable content */}
       <div className="flex-grow">
-        <HeroBanner movie={selectedMovie} />
+        <HeroBanner movie={selectedMovie || movies[0]} />
         <main className="pb-4">
-          <MovieSection onMovieClick={setSelectedMovie} />
+          <MovieSection movies={movies} loading={false} onMovieClick={setSelectedMovie} />
           <TheatreSection />
         </main>
       </div>
-      
-      {/* Fixed Bottom Navigation */}
+
       <BottomNav />
     </div>
   );

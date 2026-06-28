@@ -10,6 +10,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import connectDB from './config/db.js';
 import authRoutes from './routes/authRoutes.js';
+import movieRoutes from './routes/movieRoutes.js';
+import bookingRoutes from './routes/bookingRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -76,6 +78,8 @@ app.use(
 );
 
 app.use('/api/auth', authRoutes);
+app.use('/api/movies', movieRoutes);
+app.use('/api', bookingRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'CineReserve backend is running' });

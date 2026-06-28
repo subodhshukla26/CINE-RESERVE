@@ -1,8 +1,32 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Calendar, Building2, Home, Ticket, Heart, User } from 'lucide-react';
-import { MOVIES } from '../utils/constants';
 import toast from 'react-hot-toast';
+import { MOVIES } from '../utils/constants';
+import {
+  recordBookingActivity,
+  updateBookingFormat,
+  updateBookingShowTime,
+} from '../services/bookingJourneyService';
+
+const formatShowDate = (isoDate) => {
+  if (!isoDate) {
+    return new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    }).format(new Date());
+  }
+
+  const [year, month, day] = isoDate.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  }).format(date);
+};
 
 const SelectSchedulePage = () => {
   const navigate = useNavigate();
@@ -10,24 +34,22 @@ const SelectSchedulePage = () => {
 
   const passedMovie = location.state?.movie;
   const passedTheatre = location.state?.theatre;
+  const passedDate = location.state?.selectedDate;
 
-  // Find the 'Dhurandhar: The Revenge' movie from constants
   const movie =
     passedMovie || MOVIES.find((m) => m.slug === 'dhurandhar-the-revenge') || MOVIES[0];
+  const selectedMovieId = movie?._id || movie?.id;
+  const canSyncJourney = typeof selectedMovieId === 'string' && /^[a-f\d]{24}$/i.test(selectedMovieId);
 
-  // States
   const [selectedFormat, setSelectedFormat] = useState('2D');
   const [selectedSlot, setSelectedSlot] = useState({ screen: 1, time: '10:00 AM' });
+  const hasSyncedInitialSelection = useRef(false);
 
-  // Movie details overrides / fallback checks
   const movieTitle = movie.title || 'Dhurandhar: The Revenge';
   const theatreName = passedTheatre?.name || 'The Grandview';
-  const showDate = "Friday, October 10";
-
-  // Price range mapping based on format selection
+  const showDate = formatShowDate(passedDate);
   const priceRange = selectedFormat === '2D' ? '₹300 - ₹430' : '₹350 - ₹480';
 
-  // Showtime slots definition
   const showtimes = [
     { time: '10:00 AM', disabled: false },
     { time: '12:00 PM', disabled: false },
@@ -37,9 +59,104 @@ const SelectSchedulePage = () => {
     { time: '8:00 PM', disabled: true },
   ];
 
-  const handleSelectSlot = (screen, time, disabled) => {
+  const persistSelectedFormat = useCallback(
+    async (formatValue, { trackActivity = true, silent = false } = {}) => {
+      if (!canSyncJourney) {
+        if (!silent) {
+          toast.error('Movie journey is not ready yet. Please start from Movie Details.');
+        }
+
+        return false;
+      }
+
+      try {
+        await updateBookingFormat({
+          selectedMovieId,
+          selectedMovieFormat: formatValue,
+        });
+
+        if (trackActivity) {
+          await recordBookingActivity({
+            selectedMovieId,
+            eventName: 'Movie Format Selected',
+          });
+        }
+
+        return true;
+      } catch (error) {
+        if (!silent) {
+          const message =
+            error?.response?.data?.message ||
+            error?.message ||
+            'Unable to update the selected movie format.';
+          toast.error(message);
+        }
+
+        return false;
+      }
+    },
+    [canSyncJourney, selectedMovieId]
+  );
+
+  const persistSelectedShowTime = useCallback(
+    async (timeValue, { trackActivity = true, silent = false } = {}) => {
+      if (!canSyncJourney) {
+        if (!silent) {
+          toast.error('Movie journey is not ready yet. Please start from Movie Details.');
+        }
+
+        return false;
+      }
+
+      try {
+        await updateBookingShowTime({
+          selectedMovieId,
+          selectedShowTime: timeValue,
+        });
+
+        if (trackActivity) {
+          await recordBookingActivity({
+            selectedMovieId,
+            eventName: 'Show Time Selected',
+          });
+        }
+
+        return true;
+      } catch (error) {
+        if (!silent) {
+          const message =
+            error?.response?.data?.message ||
+            error?.message ||
+            'Unable to update the selected show time.';
+          toast.error(message);
+        }
+
+        return false;
+      }
+    },
+    [canSyncJourney, selectedMovieId]
+  );
+
+  useEffect(() => {
+    if (!canSyncJourney || hasSyncedInitialSelection.current) {
+      return;
+    }
+
+    hasSyncedInitialSelection.current = true;
+    void persistSelectedFormat(selectedFormat, { trackActivity: false, silent: true });
+    void persistSelectedShowTime(selectedSlot.time, { trackActivity: false, silent: true });
+  }, [canSyncJourney, persistSelectedFormat, persistSelectedShowTime, selectedFormat, selectedSlot.time]);
+
+  const handleFormatClick = async (format) => {
+    setSelectedFormat(format);
+    await persistSelectedFormat(format);
+  };
+
+  const handleSelectSlot = async (screen, time, disabled) => {
     if (disabled) return;
+
     setSelectedSlot({ screen, time });
+    await persistSelectedShowTime(time);
   };
 
   const handleGetTickets = () => {
@@ -55,23 +172,16 @@ const SelectSchedulePage = () => {
 
   return (
     <div className="min-h-screen bg-slate-100 flex items-center justify-center py-4">
-      {/* Mobile Device Mockup container with 390px x 813px dimensions */}
       <div className="relative w-[390px] h-[813px] bg-[#F7F8FD] rounded-[40px] shadow-2xl overflow-hidden flex flex-col border border-slate-200 select-none">
-        
-        {/* Scrollable Container */}
         <div className="flex-grow overflow-y-auto no-scrollbar pb-24">
-          
-          {/* Movie Banner Header */}
           <div className="relative h-[220px] w-full flex-shrink-0">
             <img
               src={movie.banner}
               alt={movieTitle}
               className="w-full h-full object-cover"
             />
-            {/* Dark gradient overlay for text readability */}
             <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/75"></div>
-            
-            {/* Header Action Buttons */}
+
             <div className="absolute top-8 left-5 right-5 flex justify-between items-center z-10">
               <button
                 onClick={() => navigate(-1)}
@@ -80,7 +190,7 @@ const SelectSchedulePage = () => {
                 <ChevronLeft size={20} strokeWidth={2.5} />
                 <span>Back</span>
               </button>
-              
+
               <button
                 onClick={() => navigate('/home')}
                 className="text-white font-semibold text-[15px] hover:opacity-80 active:scale-95 transition-all"
@@ -89,7 +199,6 @@ const SelectSchedulePage = () => {
               </button>
             </div>
 
-            {/* Movie Title, Theatre & Date */}
             <div className="absolute bottom-5 left-6 right-6 z-10 text-white">
               <h1 className="text-[22px] font-extrabold leading-tight drop-shadow-sm mb-1.5">
                 {movieTitle}
@@ -107,21 +216,18 @@ const SelectSchedulePage = () => {
             </div>
           </div>
 
-          {/* Progress Indicator Bar */}
           <div className="w-full px-6 mt-4 flex justify-center flex-shrink-0">
             <div className="w-full h-[5px] bg-gray-200 rounded-full overflow-hidden">
               <div className="w-[45%] h-full bg-[#5D4CE8] rounded-full"></div>
             </div>
           </div>
 
-          {/* Page Heading */}
           <div className="px-6 mt-5 mb-4">
             <h2 className="text-[20px] font-extrabold text-[#111827]">
               Choose Schedule
             </h2>
           </div>
 
-          {/* Format Selector Row */}
           <div className="px-6 flex items-center justify-between mb-5">
             <div className="flex items-center gap-4">
               <span className="text-[15px] font-extrabold text-[#111827]">
@@ -133,7 +239,7 @@ const SelectSchedulePage = () => {
                   return (
                     <button
                       key={format}
-                      onClick={() => setSelectedFormat(format)}
+                      onClick={() => handleFormatClick(format)}
                       className={`w-[48px] h-[32px] flex items-center justify-center rounded-lg font-bold text-[13px] border transition-all duration-200 ${
                         isSelected
                           ? 'bg-[#5D4CE8] border-[#5D4CE8] text-white shadow-sm shadow-[#5D4CE8]/20'
@@ -151,10 +257,8 @@ const SelectSchedulePage = () => {
             </span>
           </div>
 
-          {/* Divider */}
           <div className="mx-6 border-t border-gray-200/60 mb-5"></div>
 
-          {/* Screen 1 Showtimes */}
           <div className="mb-5">
             <h3 className="text-[15px] font-extrabold text-[#111827] px-6 mb-3">
               Screen 1
@@ -182,7 +286,6 @@ const SelectSchedulePage = () => {
             </div>
           </div>
 
-          {/* Screen 2 Showtimes */}
           <div className="mb-6">
             <h3 className="text-[15px] font-extrabold text-[#111827] px-6 mb-3">
               Screen 2
@@ -210,7 +313,6 @@ const SelectSchedulePage = () => {
             </div>
           </div>
 
-          {/* Action Button */}
           <div className="px-6 mt-8 mb-4">
             <button
               onClick={handleGetTickets}
@@ -219,41 +321,38 @@ const SelectSchedulePage = () => {
               Get Tickets
             </button>
           </div>
-
         </div>
 
-        {/* Global Bottom Navigation Footer (Fixed inside the mobile container) */}
         <nav className="absolute bottom-0 left-0 right-0 h-[72px] bg-white/95 backdrop-blur-md border-t border-gray-100 flex items-center justify-around shadow-[0_-4px_12px_rgba(0,0,0,0.03)] z-50 px-6">
-          <button 
+          <button
             onClick={() => navigate('/home')}
-            className="flex flex-col items-center justify-center w-12 h-12 text-[#5D4CE8] active:scale-90 transition-transform" 
+            className="flex flex-col items-center justify-center w-12 h-12 text-[#5D4CE8] active:scale-90 transition-transform"
             aria-label="Home"
           >
             <Home size={24} strokeWidth={2.5} />
           </button>
-          
-          <button 
-            className="flex flex-col items-center justify-center w-12 h-12 text-gray-300 hover:text-gray-400 active:scale-90 transition-transform" 
+
+          <button
+            className="flex flex-col items-center justify-center w-12 h-12 text-gray-300 hover:text-gray-400 active:scale-90 transition-transform"
             aria-label="Tickets"
           >
             <Ticket size={24} strokeWidth={2.5} />
           </button>
-          
-          <button 
-            className="flex flex-col items-center justify-center w-12 h-12 text-gray-300 hover:text-gray-400 active:scale-90 transition-transform" 
+
+          <button
+            className="flex flex-col items-center justify-center w-12 h-12 text-gray-300 hover:text-gray-400 active:scale-90 transition-transform"
             aria-label="Favorites"
           >
             <Heart size={24} strokeWidth={2.5} />
           </button>
-          
-          <button 
-            className="flex flex-col items-center justify-center w-12 h-12 text-gray-300 hover:text-gray-400 active:scale-90 transition-transform" 
+
+          <button
+            className="flex flex-col items-center justify-center w-12 h-12 text-gray-300 hover:text-gray-400 active:scale-90 transition-transform"
             aria-label="Profile"
           >
             <User size={24} strokeWidth={2.5} />
           </button>
         </nav>
-
       </div>
     </div>
   );

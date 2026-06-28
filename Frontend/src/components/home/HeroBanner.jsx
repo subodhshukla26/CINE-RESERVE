@@ -1,20 +1,18 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 
 const HeroBanner = ({ movie }) => {
-  const navigate = useNavigate();
+  const posterImage = movie?.posterImage || movie?.poster || '';
 
   return (
     <div className="px-5 pt-5 pb-2">
       <section 
         className="relative w-full h-[220px] overflow-hidden rounded-[32px] shadow-lg border border-white/5 bg-gray-900 cursor-pointer"
-        onClick={() => navigate(`/movie/${movie.slug}`)}
       >
         {/* Background Layer (Blurred & Darkened) */}
         <div className="absolute inset-0 w-full h-full select-none pointer-events-none">
           <img
-            src={movie?.poster}
+            src={posterImage}
             alt=""
             className="w-full h-full object-cover blur-3xl opacity-50 scale-150 transition-all duration-1000"
           />
@@ -24,8 +22,8 @@ const HeroBanner = ({ movie }) => {
         {/* Foreground Layer (Contained Poster) */}
         <div className="relative w-full h-full flex justify-center items-center py-2">
           <img
-            key={movie?.id}
-            src={movie?.poster}
+            key={movie?._id || movie?.id}
+            src={posterImage}
             alt={movie?.title || 'Movie Banner'}
             className="h-full max-w-full object-contain drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)] transition-all duration-700 ease-out"
           />

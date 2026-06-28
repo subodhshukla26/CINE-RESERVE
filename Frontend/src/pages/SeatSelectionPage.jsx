@@ -1,7 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Home, Ticket, Heart, User } from 'lucide-react';
 import toast from 'react-hot-toast';
+import {
+  updateBookingSeats,
+  recordBookingActivity,
+} from '../services/bookingJourneyService';
 
 // ─── Seat Layout Data ────────────────────────────────────────────────────────
 // Rows A–H: 10 seats each | Rows J–M: 12 seats each (no row I — standard cinema)
@@ -43,7 +47,7 @@ const Seat = ({ seatKey, number, status, onToggle }) => {
     available:
       'w-[25px] h-[22px] bg-white border border-gray-200 text-gray-500 cursor-pointer hover:border-[#5D4CE8] hover:text-[#5D4CE8]',
     occupied:
-      'w-[25px] h-[22px] bg-gray-200 border border-gray-200 text-gray-400 cursor-not-allowed',
+      'w-[25px] h-[22px] bg-emerald-500 border border-emerald-500 text-white cursor-not-allowed',
     selected:
       'w-[25px] h-[22px] bg-[#5D4CE8] border border-[#5D4CE8] text-white cursor-pointer shadow-sm shadow-[#5D4CE8]/30',
   };
@@ -71,18 +75,56 @@ const SeatSelectionPage = () => {
   const selectedSlot = location.state?.selectedSlot || { screen: 1, time: '10:00 AM' };
   const selectedFormat = location.state?.selectedFormat || '2D';
 
+  const selectedMovieId = movie?._id || movie?.id;
+  const canSyncJourney = typeof selectedMovieId === 'string' && /^[a-f\d]{24}$/i.test(selectedMovieId);
+
   const [selectedSeats, setSelectedSeats] = useState(new Set(INITIAL_SELECTED));
 
-  const toggleSeat = (seatKey) => {
-    setSelectedSeats((prev) => {
-      const next = new Set(prev);
-      if (next.has(seatKey)) {
-        next.delete(seatKey);
-      } else {
-        next.add(seatKey);
+  useEffect(() => {
+    const syncInitialSeats = async () => {
+      if (canSyncJourney) {
+        try {
+          const formattedSeats = [...selectedSeats].map((s) => s.replace('-', ''));
+          await updateBookingSeats({
+            selectedMovieId,
+            selectedSeats: formattedSeats,
+          });
+        } catch (error) {
+          console.error('Error syncing initial seats:', error);
+        }
       }
-      return next;
-    });
+    };
+    syncInitialSeats();
+  }, [canSyncJourney, selectedMovieId]);
+
+  const toggleSeat = async (seatKey) => {
+    const isSelecting = !selectedSeats.has(seatKey);
+    const nextSeats = new Set(selectedSeats);
+    if (isSelecting) {
+      nextSeats.add(seatKey);
+    } else {
+      nextSeats.delete(seatKey);
+    }
+
+    setSelectedSeats(nextSeats);
+
+    if (canSyncJourney) {
+      try {
+        const formattedSeats = [...nextSeats].map((s) => s.replace('-', ''));
+        await updateBookingSeats({
+          selectedMovieId,
+          selectedSeats: formattedSeats,
+        });
+
+        await recordBookingActivity({
+          selectedMovieId,
+          eventName: isSelecting ? 'Seat Selected' : 'Seat Deselected',
+        });
+      } catch (error) {
+        console.error('Error syncing seats:', error);
+        toast.error('Unable to update selected seats.');
+      }
+    }
   };
 
   const totalPrice = selectedSeats.size * PRICE_PER_SEAT;
@@ -246,7 +288,7 @@ const SeatSelectionPage = () => {
             </div>
             {/* Occupied */}
             <div className="flex items-center gap-2">
-              <div className="w-[18px] h-[16px] rounded-sm bg-gray-300" />
+              <div className="w-[18px] h-[16px] rounded-sm bg-emerald-500" />
               <span className="text-[12px] font-semibold text-gray-500">Occupied</span>
             </div>
             {/* Selected */}

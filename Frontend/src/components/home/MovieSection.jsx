@@ -1,9 +1,22 @@
 import React, { useState } from 'react';
 import MovieCard from './MovieCard';
-import { MOVIES } from '../../utils/constants';
 
-const MovieSection = ({ onMovieClick }) => {
+const MovieSection = ({ movies = [], loading = false, onMovieClick }) => {
   const [activeTab, setActiveTab] = useState('Now Showing');
+
+  const filteredMovies = movies.filter((movie) => {
+    const status = movie?.status?.toUpperCase();
+
+    if (!status) {
+      return activeTab === 'Now Showing';
+    }
+
+    if (activeTab === 'Now Showing') {
+      return status === 'NOW_SHOWING';
+    }
+
+    return status === 'COMING_SOON';
+  });
 
   return (
     <section className="mt-2">
@@ -37,15 +50,20 @@ const MovieSection = ({ onMovieClick }) => {
         </button>
       </div>
 
-      {/* Horizontal Scroll Area */}
       <div className="flex gap-4 px-5 overflow-x-auto overflow-y-hidden no-scrollbar pb-4 scroll-smooth">
-        {MOVIES.map((movie) => (
-          <MovieCard 
-            key={movie.id} 
-            movie={movie} 
-            onClick={() => onMovieClick?.(movie)} 
-          />
-        ))}
+        {loading ? (
+          <p className="text-sm text-gray-500">Loading movies...</p>
+        ) : filteredMovies.length === 0 ? (
+          <p className="text-sm text-gray-500">No movies available right now.</p>
+        ) : (
+          filteredMovies.map((movie) => (
+            <MovieCard
+              key={movie._id || movie.id}
+              movie={movie}
+              onClick={() => onMovieClick?.(movie)}
+            />
+          ))
+        )}
       </div>
     </section>
   );

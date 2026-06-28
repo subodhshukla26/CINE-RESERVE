@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Home, Ticket, Heart, User } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { createBooking } from '../services/bookingJourneyService';
 
 const BOOKING_FEE = 20;
 
@@ -88,31 +89,59 @@ const PaymentPage = () => {
   };
 
   // ── Payment handler ──
-  const handleCompletePayment = () => {
+  const handleCompletePayment = async () => {
     if (selectedMethod === 'card') {
       const errs = validate();
       if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     }
     setErrors({});
-    toast.success(
-      `Payment of ₹${total} successful! 🎉\n🎬 ${movieTitle}\n🎟️ Seats: ${seats.join(', ')}`,
-      {
-        duration: 5000,
-        position: 'top-center',
-        style: {
-          background: '#1F2937',
-          color: '#FFFFFF',
-          borderRadius: '16px',
-          fontSize: '14px',
-          fontWeight: '600',
-          padding: '16px 20px',
-          boxShadow: '0 10px 15px -3px rgba(0,0,0,0.15)',
-          whiteSpace: 'pre-line',
-        },
-        iconTheme: { primary: '#5D4CE8', secondary: '#FFFFFF' },
-      }
-    );
-    setTimeout(() => navigate('/home'), 2000);
+
+    try {
+      const movieId = location.state?.movie?._id || location.state?.movie?.id || '507f1f77bcf86cd799439011';
+      const moviePoster = location.state?.movie?.poster || location.state?.movie?.banner || '';
+      const theatreName = location.state?.theatre?.name || 'The Grandview';
+      const screenName = location.state?.selectedSlot?.screen ? `Screen ${location.state.selectedSlot.screen}` : 'Screen 1';
+      const showDate = 'Friday, October 10';
+      const showTime = location.state?.selectedSlot?.time || '10:00 AM';
+      const movieFormat = location.state?.selectedFormat || '2D';
+
+      await createBooking({
+        movieId,
+        movieName: movieTitle,
+        moviePoster,
+        theatreName,
+        screenName,
+        showDate,
+        showTime,
+        movieFormat,
+        selectedSeats: seats,
+        amountPaid: total,
+      });
+
+      toast.success(
+        `Payment of ₹${total} successful! 🎉\n🎬 ${movieTitle}\n🎟️ Seats: ${seats.join(', ')}`,
+        {
+          duration: 3000,
+          position: 'top-center',
+          style: {
+            background: '#1F2937',
+            color: '#FFFFFF',
+            borderRadius: '16px',
+            fontSize: '14px',
+            fontWeight: '600',
+            padding: '16px 20px',
+            boxShadow: '0 10px 15px -3px rgba(0,0,0,0.15)',
+            whiteSpace: 'pre-line',
+          },
+          iconTheme: { primary: '#5D4CE8', secondary: '#FFFFFF' },
+        }
+      );
+
+      setTimeout(() => navigate('/bookings'), 1500);
+    } catch (error) {
+      console.error('Error confirming booking:', error);
+      toast.error('Payment succeeded, but failed to save booking on the server.');
+    }
   };
 
   return (
@@ -334,6 +363,7 @@ const PaymentPage = () => {
             <Home size={24} strokeWidth={2.5} />
           </button>
           <button
+            onClick={() => navigate('/bookings')}
             className="flex flex-col items-center justify-center w-12 h-12 text-gray-300 hover:text-gray-400 active:scale-90 transition-transform"
             aria-label="Tickets"
           >

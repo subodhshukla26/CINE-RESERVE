@@ -1,7 +1,39 @@
-import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, MapPin, Home, Ticket, Heart, User } from 'lucide-react';
-import { MOVIES, THEATRES } from '../utils/constants';
+import toast from 'react-hot-toast';
+import { MOVIES } from '../utils/constants';
+import {
+  recordBookingActivity,
+  updateBookingDate,
+  updateBookingTheatre,
+} from '../services/bookingJourneyService';
+
+const formatDateParts = (date) => ({
+  day: new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(date),
+  date: new Intl.DateTimeFormat('en-US', { day: '2-digit' }).format(date),
+  iso: [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-'),
+});
+
+const buildDateWindow = (pastDays = 3, futureDays = 10) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Array.from({ length: pastDays + futureDays + 1 }, (_, index) => {
+    const offset = index - pastDays;
+    const date = new Date(today);
+    date.setDate(today.getDate() + offset);
+
+    return {
+      ...formatDateParts(date),
+      isPast: date < today,
+    };
+  });
+};
 
 // Custom inline SVG logos for theatres to render sharp and pixel-perfect without network assets
 const TheatreLogo = ({ type }) => {
@@ -55,40 +87,135 @@ const TheatreLogo = ({ type }) => {
   );
 };
 
+const PROTOTYPE_THEATRES = [
+  {
+    id: '1',
+    name: 'PVR Phoenix Palassio',
+    location: 'Gomti Nagar, Lucknow',
+    priceRange: '₹320 - ₹450',
+    logo: 'grandview',
+  },
+  {
+    id: '2',
+    name: 'INOX Megaplex',
+    location: 'Alambagh, Lucknow',
+    priceRange: '₹300 - ₹430',
+    logo: 'playloft',
+  },
+  {
+    id: '3',
+    name: 'Cinepolis One Awadh Center',
+    location: 'Hazratganj, Lucknow',
+    priceRange: '₹320',
+    logo: 'cinemaone',
+  },
+  {
+    id: '4',
+    name: 'Wave Cinemas Lucknow',
+    location: 'Sushant Golf City, Lucknow',
+    priceRange: '₹350',
+    logo: 'cinemount',
+  },
+];
+
 const SelectTheatre = () => {
   const { slug } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
 
   // Find the selected movie from constants
-  const movie = MOVIES.find((m) => m.slug === slug) || MOVIES.find((m) => m.slug === 'meg-2-the-trench') || MOVIES[0];
+  const movie =
+    location.state?.movie ||
+    MOVIES.find((m) => m.slug === slug) ||
+    MOVIES.find((m) => m.slug === 'meg-2-the-trench') ||
+    MOVIES[0];
+  const selectedMovieId = movie?._id || movie?.id;
+  const canSyncJourney = typeof selectedMovieId === 'string' && /^[a-f\d]{24}$/i.test(selectedMovieId);
 
-  // Dates state
-  const DATES = [
-    { id: '1', day: 'Fri', date: '10' },
-    { id: '2', day: 'Sat', date: '11' },
-    { id: '3', day: 'Sun', date: '12' },
-    { id: '4', day: 'Mon', date: '13' },
-    { id: '5', day: 'Tue', date: '14' },
-    { id: '6', day: 'Wed', date: '15' },
-    { id: '7', day: 'Thu', date: '16' },
-  ];
-  const [selectedDate, setSelectedDate] = useState('1'); // Fri 10 selected by default
+  const DATES = buildDateWindow();
+  const todayIso = DATES.find((date) => !date.isPast)?.iso || DATES[0].iso;
+  const [selectedDate, setSelectedDate] = useState(todayIso);
+  const hasSyncedInitialDate = useRef(false);
 
   // Selected theatre state for premium highlight interaction
   const [selectedTheatre, setSelectedTheatre] = useState(null);
 
-  // Filter theatres for the mockup list
-  const mockupTheatres = THEATRES.filter(t => ['4', '5', '6', '7'].includes(t.id));
-  const displayTheatres = mockupTheatres.length > 0 ? mockupTheatres : THEATRES;
+  const syncDateSelection = useCallback(async (dateValue) => {
+    if (!canSyncJourney) {
+      toast.error('Movie journey is not ready yet. Please start from Movie Details.');
+      return;
+    }
 
-  const handleTheatreClick = (theatre) => {
+    try {
+      await updateBookingDate({
+        selectedMovieId,
+        selectedDate: dateValue,
+      });
+
+      await recordBookingActivity({
+        selectedMovieId,
+        eventName: 'Date Selected',
+      });
+    } catch (error) {
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Unable to update the selected date.';
+      toast.error(message);
+    }
+  }, [canSyncJourney, selectedMovieId]);
+
+  useEffect(() => {
+    if (!canSyncJourney || hasSyncedInitialDate.current) {
+      return;
+    }
+
+    hasSyncedInitialDate.current = true;
+    syncDateSelection(selectedDate);
+  }, [canSyncJourney, selectedDate, syncDateSelection]);
+
+  const handleDateClick = (dateValue, isPast) => {
+    if (isPast) {
+      return;
+    }
+
+    setSelectedDate(dateValue);
+    syncDateSelection(dateValue);
+  };
+
+  const handleTheatreClick = async (theatre) => {
+    if (!canSyncJourney) {
+      toast.error('Movie journey is not ready yet. Please start from Movie Details.');
+      return;
+    }
+
     setSelectedTheatre(theatre.id);
-    navigate('/SelectSchedulePage', {
-      state: {
-        theatre,
-        movie,
-      },
-    });
+
+    try {
+      await updateBookingTheatre({
+        selectedMovieId,
+        selectedTheatre: theatre,
+      });
+
+      await recordBookingActivity({
+        selectedMovieId,
+        eventName: 'Theatre Selected',
+      });
+
+      navigate('/SelectSchedulePage', {
+        state: {
+          theatre,
+          movie,
+          selectedDate,
+        },
+      });
+    } catch (error) {
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        'Unable to update the selected theatre.';
+      toast.error(message);
+    }
   };
 
   return (
@@ -112,7 +239,7 @@ const SelectTheatre = () => {
             {/* Header Action Buttons */}
             <div className="absolute top-8 left-5 right-5 flex justify-between items-center z-10">
               <button
-                onClick={() => navigate(`/movie/${movie.slug}`)}
+                onClick={() => navigate('/home')}
                 className="flex items-center gap-1.5 text-white font-medium text-[15px] hover:opacity-80 active:scale-95 transition-all"
               >
                 <ChevronLeft size={20} strokeWidth={2.5} />
@@ -153,25 +280,40 @@ const SelectTheatre = () => {
           </div>
 
           {/* Date Selector Row */}
+          <div className="px-6 flex items-center justify-between mb-2">
+            <p className="text-[12px] font-semibold text-gray-500">
+              Tickets available from today onwards
+            </p>
+          </div>
+
           <div className="px-6 flex gap-3 overflow-x-auto no-scrollbar mb-5">
             {DATES.map((d) => {
-              const isSelected = selectedDate === d.id;
+              const isSelected = selectedDate === d.iso;
               return (
                 <button
-                  key={d.id}
-                  onClick={() => setSelectedDate(d.id)}
-                  className="flex flex-col items-center gap-1.5 focus:outline-none group active:scale-95 transition-transform"
+                  key={d.iso}
+                  disabled={d.isPast}
+                  onClick={() => handleDateClick(d.iso, d.isPast)}
+                  className={`flex flex-col items-center gap-1.5 focus:outline-none group transition-transform ${
+                    d.isPast ? 'cursor-not-allowed opacity-45' : 'active:scale-95'
+                  }`}
                 >
                   <span
                     className={`text-[12px] font-bold transition-colors ${
-                      isSelected ? 'text-[#5D4CE8]' : 'text-gray-400 group-hover:text-gray-600'
+                      isSelected
+                        ? 'text-[#5D4CE8]'
+                        : d.isPast
+                        ? 'text-gray-300'
+                        : 'text-gray-400 group-hover:text-gray-600'
                     }`}
                   >
                     {d.day}
                   </span>
                   <div
                     className={`w-[38px] h-[38px] flex items-center justify-center rounded-xl font-bold text-[14px] transition-all duration-200 border ${
-                      isSelected
+                      d.isPast
+                        ? 'bg-gray-100 border-gray-200 text-gray-300'
+                        : isSelected
                         ? 'bg-[#5D4CE8] border-[#5D4CE8] text-white shadow-sm shadow-[#5D4CE8]/30'
                         : 'bg-white border-gray-200 text-gray-700 hover:border-gray-300'
                     }`}
@@ -188,7 +330,7 @@ const SelectTheatre = () => {
 
           {/* Theatre Cards List */}
           <div className="flex flex-col gap-4 px-6">
-            {displayTheatres.map((theatre) => {
+            {PROTOTYPE_THEATRES.map((theatre) => {
               const isSelected = selectedTheatre === theatre.id;
               const isSvgLogo = ['grandview', 'playloft', 'cinemaone', 'cinemount'].includes(theatre.logo);
               

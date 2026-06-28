@@ -18,7 +18,7 @@ const BookingSummaryPage = () => {
   const movieTitle = movie?.title || 'Dhurandhar: The Revenge';
   const movieBanner = movie?.banner || movie?.poster;
   const theatreName = theatre?.name || 'The Grandview';
-  const showDate = 'Friday, October 10'; // Unified default date from schedule and theatre pages
+  const showDate = location.state?.showDate || 'Friday, October 10';
   const bookingFee = 20;
   const totalPrice = ticketPrice + bookingFee;
 

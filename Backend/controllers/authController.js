@@ -1,6 +1,16 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
 import User from '../models/User.js';
+
+const isDbReady = () => mongoose.connection.readyState === 1;
+
+const buildUserResponse = (user) => ({
+  _id: user._id,
+  fullName: user.fullName,
+  email: user.email,
+  role: user.role,
+});
 
 export const signup = async (req, res) => {
   try {
@@ -14,6 +24,13 @@ export const signup = async (req, res) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    if (!isDbReady()) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database is not connected. Please try again later.',
+      });
+    }
+
     const existingUser = await User.findOne({ email: normalizedEmail });
 
     if (existingUser) {
@@ -37,34 +54,30 @@ export const signup = async (req, res) => {
 
     const user = await User.create({
       fullName,
-      email,
+      email: normalizedEmail,
       password: hashedPassword,
     });
-
-    const createdUser = user.toObject();
-    const userResponse = {
-      _id: createdUser._id,
-      fullName: createdUser.fullName,
-      email: createdUser.email,
-      role: createdUser.role,
-      createdAt: createdUser.createdAt,
-      updatedAt: createdUser.updatedAt,
-    };
 
     return res.status(201).json({
       success: true,
       message: 'User registered successfully.',
-      user: userResponse,
+      user: {
+        ...buildUserResponse(user),
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
     });
   } catch (error) {
     console.error('Signup controller error:', error);
 
     return res.status(500).json({
       success: false,
-      message: 'Internal Server Error.',
+      message:
+        process.env.NODE_ENV === 'production'
+          ? 'Internal Server Error.'
+          : error.message,
     });
   }
-  console.log(req.body);
 };
 
 export const login = async (req, res) => {
@@ -79,6 +92,13 @@ export const login = async (req, res) => {
     }
 
     const normalizedEmail = email.trim().toLowerCase();
+    if (!isDbReady()) {
+      return res.status(503).json({
+        success: false,
+        message: 'Database is not connected. Please try again later.',
+      });
+    }
+
     const user = await User.findOne({ email: normalizedEmail });
 
     if (!user) {
@@ -97,19 +117,18 @@ export const login = async (req, res) => {
       });
     }
 
-    const loggedInUser = user.toObject();
-    const userResponse = {
-      _id: loggedInUser._id,
-      fullName: loggedInUser.fullName,
-      email: loggedInUser.email,
-      role: loggedInUser.role,
-    };
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({
+        success: false,
+        message: 'JWT secret is not configured on the server.',
+      });
+    }
 
     const token = jwt.sign(
       {
-        userId: loggedInUser._id,
-        email: loggedInUser.email,
-        role: loggedInUser.role,
+        userId: user._id,
+        email: user.email,
+        role: user.role,
       },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
@@ -119,14 +138,17 @@ export const login = async (req, res) => {
       success: true,
       message: 'Login successful.',
       token,
-      user: userResponse,
+      user: buildUserResponse(user),
     });
   } catch (error) {
     console.error('Login controller error:', error);
 
     return res.status(500).json({
       success: false,
-      message: 'Internal Server Error.',
+      message:
+        process.env.NODE_ENV === 'production'
+          ? 'Internal Server Error.'
+          : error.message,
     });
   }
 };
