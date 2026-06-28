@@ -33,6 +33,7 @@ const allowedOrigins = [
     .map((value) => value.trim())
     .filter(Boolean),
 ].filter(Boolean);
+const vercelPreviewOriginPattern = /^https:\/\/cine-reserve(-[a-z0-9-]+)?\.vercel\.app$/i;
 
 const isAllowedOrigin = (origin) => {
   if (!origin) {
@@ -40,6 +41,10 @@ const isAllowedOrigin = (origin) => {
   }
 
   if (allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  if (vercelPreviewOriginPattern.test(origin)) {
     return true;
   }
 
