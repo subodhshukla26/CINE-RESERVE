@@ -21,13 +21,18 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 const app = express();
 const PORT = process.env.PORT || 5000;
 const configuredClientUrl = process.env.CLIENT_URL?.trim();
+const defaultAllowedOrigins = [
+  'http://localhost:5174',
+  'https://cine-reserve-blond.vercel.app',
+];
 const allowedOrigins = [
   configuredClientUrl,
+  ...defaultAllowedOrigins,
   ...(process.env.ALLOWED_ORIGINS || '')
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean),
-];
+].filter(Boolean);
 
 const isAllowedOrigin = (origin) => {
   if (!origin) {
